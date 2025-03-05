@@ -481,3 +481,115 @@ def ranking_metrics_at_k(model, train_user_items, test_user_items, int K=10,
         "auc": mean_auc / total,
         "catalogue_coverage": catalogue_coverage  # Add the new metric to the return dictionary
     }
+
+@cython.boundscheck(False)
+def ranking_metrics_at_k_original(model, train_user_items, test_user_items, int K=10,
+                         show_progress=True, int num_threads=1):
+    """ Calculates ranking metrics for a given trained model
+
+    Parameters
+    ----------
+    model : RecommenderBase
+        The fitted recommendation model to test
+    train_user_items : csr_matrix
+        Sparse matrix of user by item that contains elements that were used
+            in training the model
+    test_user_items : csr_matrix
+        Sparse matrix of user by item that contains withheld elements to
+        test on
+    K : int
+        Number of items to test on
+    show_progress : bool, optional
+        Whether to show a progress bar
+    num_threads : int, optional
+        The number of threads to use for testing. Specifying 0 means to default
+        to the number of cores on the machine. Note: aside from the ALS and BPR
+        models, setting this to more than 1 will likely hurt performance rather than
+        help.
+
+    Returns
+    -------
+    float
+        the calculated p@k
+    """
+    if not isinstance(train_user_items, csr_matrix):
+        train_user_items = train_user_items.tocsr()
+
+    if not isinstance(test_user_items, csr_matrix):
+        test_user_items = test_user_items.tocsr()
+
+    cdef int users = test_user_items.shape[0], items = test_user_items.shape[1]
+    cdef int u, i, batch_idx
+    # precision
+    cdef double relevant = 0, pr_div = 0, total = 0
+    # map
+    cdef double mean_ap = 0, ap = 0
+    # ndcg
+    cdef double[:] cg = (1.0 / np.log2(np.arange(2, K + 2)))
+    cdef double[:] cg_sum = np.cumsum(cg)
+    cdef double ndcg = 0, idcg
+    # auc
+    cdef double mean_auc = 0, auc, hit, miss, num_pos_items, num_neg_items
+
+    cdef int[:] test_indptr = test_user_items.indptr
+    cdef int[:] test_indices = test_user_items.indices
+
+    cdef int[:, :] ids
+    cdef int[:] batch
+
+    cdef unordered_set[int] likes
+
+
+    batch_size = 1000
+    start_idx = 0
+
+    # get an array of userids that have at least one item in the test set
+    to_generate = np.arange(users, dtype="int32")
+    to_generate = to_generate[np.ediff1d(test_user_items.indptr) > 0]
+
+    progress = tqdm(total=len(to_generate), disable=not show_progress)
+
+    while start_idx < len(to_generate):
+        batch = to_generate[start_idx: start_idx + batch_size]
+        ids, _ = model.recommend(batch, train_user_items[batch], N=K)
+        start_idx += batch_size
+
+        with nogil:
+            for batch_idx in range(len(batch)):
+                u = batch[batch_idx]
+                likes.clear()
+                for i in range(test_indptr[u], test_indptr[u+1]):
+                    likes.insert(test_indices[i])
+
+                pr_div += fmin(K, likes.size())
+                ap = 0
+                hit = 0
+                miss = 0
+                auc = 0
+                idcg = cg_sum[min(K, likes.size()) - 1]
+                num_pos_items = likes.size()
+                num_neg_items = items - num_pos_items
+
+                for i in range(K):
+                    if likes.find(ids[batch_idx, i]) != likes.end():
+                        relevant += 1
+                        hit += 1
+                        ap += hit / (i + 1)
+                        ndcg += cg[i] / idcg
+                    else:
+                        miss += 1
+                        auc += hit
+                auc += ((hit + num_pos_items) / 2.0) * (num_neg_items - miss)
+                mean_ap += ap / fmin(K, likes.size())
+                mean_auc += auc / (num_pos_items * num_neg_items)
+                total += 1
+
+        progress.update(len(batch))
+
+    progress.close()
+    return {
+        "precision": relevant / pr_div,
+        "map": mean_ap / total,
+        "ndcg": ndcg / total,
+        "auc": mean_auc / total
+    }
