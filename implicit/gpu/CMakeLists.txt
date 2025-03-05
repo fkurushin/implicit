@@ -10,6 +10,7 @@ elseif(DEFINED ENV{IMPLICIT_DISABLE_CUDA})
     message("Disabling building the GPU extension since IMPLICIT_DISABLE_CUDA env var is set")
 
 else()
+    set(CMAKE_CUDA_COMPILER /usr/local/cuda-12/bin/nvcc)
     enable_language(CUDA)
     add_cython_target(_cuda CXX)
 
