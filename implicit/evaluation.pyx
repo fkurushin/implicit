@@ -389,8 +389,8 @@ def ranking_metrics_at_k(model, train_user_items, test_user_items, int K=10,
 
     Returns
     -------
-    float
-        the calculated p@k
+    dict
+        A dictionary containing the calculated metrics: precision, map, ndcg, auc, and catalogue_coverage
     """
     if not isinstance(train_user_items, csr_matrix):
         train_user_items = train_user_items.tocsr()
@@ -418,7 +418,7 @@ def ranking_metrics_at_k(model, train_user_items, test_user_items, int K=10,
     cdef int[:] batch
 
     cdef unordered_set[int] likes
-
+    cdef unordered_set[int] recommended_items  # Set to track unique recommended items
 
     batch_size = 1000
     start_idx = 0
@@ -440,6 +440,10 @@ def ranking_metrics_at_k(model, train_user_items, test_user_items, int K=10,
                 likes.clear()
                 for i in range(test_indptr[u], test_indptr[u+1]):
                     likes.insert(test_indices[i])
+
+                # Track recommended items for catalogue coverage
+                for i in range(K):
+                    recommended_items.insert(ids[batch_idx, i])
 
                 pr_div += fmin(K, likes.size())
                 ap = 0
@@ -466,10 +470,14 @@ def ranking_metrics_at_k(model, train_user_items, test_user_items, int K=10,
 
         progress.update(len(batch))
 
+    # Calculate catalogue coverage
+    cdef double catalogue_coverage = len(recommended_items) / items
+
     progress.close()
     return {
         "precision": relevant / pr_div,
         "map": mean_ap / total,
         "ndcg": ndcg / total,
-        "auc": mean_auc / total
+        "auc": mean_auc / total,
+        "catalogue_coverage": catalogue_coverage  # Add the new metric to the return dictionary
     }
