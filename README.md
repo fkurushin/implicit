@@ -47,6 +47,16 @@ conda install -c conda-forge implicit
 conda install -c conda-forge implicit implicit-proc=*=gpu
 ```
 
+#### Build from source
+
+```
+python -m venv ~/venv/implicit
+source ~/venv/implicit/bin/activate
+pip install --upgrade pip
+pip install -r requirements-dev.txt
+pip install cmake ninja
+```
+
 #### Basic Usage
 
 ```python
