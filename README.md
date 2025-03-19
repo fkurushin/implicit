@@ -56,7 +56,8 @@ source ~/venv/implicit/bin/activate
 pip install --upgrade pip
 pip install -r requirements-dev.txt
 pip install cmake ninja
-python setup.py --force-reinstall dist/bdist_wheel
+python setup.py bdist_wheel
+pip install --force-reinstall dist/bdist_wheel
 ```
 
 #### Basic Usage
