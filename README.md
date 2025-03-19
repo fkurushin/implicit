@@ -51,10 +51,13 @@ conda install -c conda-forge implicit implicit-proc=*=gpu
 
 ```
 python -m venv ~/venv/implicit
+git clone https://github.com/fkurushin/implicit.git
+sed -i '13i set(CMAKE_CUDA_COMPILER /usr/local/cuda-12/bin/nvcc)' /app/implicit/gpu/CMakeLists.txt
 source ~/venv/implicit/bin/activate
 pip install --upgrade pip
 pip install -r requirements-dev.txt
 pip install cmake ninja
+python setup.py --force-reinstall dist/bdist_wheel
 ```
 
 #### Basic Usage
